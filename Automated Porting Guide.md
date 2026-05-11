@@ -1,45 +1,46 @@
 <!-- markdownlint-disable MD033 -->
-# Automated Porting Guide: Competitor MCU → Nuvoton NuMicro
+# Using NuTRM and NuCodeGen to Port Your STM32F4 Code to NuMicro M487
 
-## Concept
+## Introduction
 
-When you already have **the competitor's source code** and **know the chip part number** (e.g., STM32F407, R7FA6M4), you can leverage **GitHub Copilot + NuTRM agent + NuCodeGen agent** inside VS Code to produce a porting guide to a Nuvoton NuMicro chip — with minimal manual effort.
+This document shows you **how to use two VS Code extensions — NuTRM and NuCodeGen — as AI-powered assistants** to speed up each step of that porting process.
 
-| Extension | Role in Automation | Link |
-|-----------|-------------------|------|
-| **GitHub Copilot** | Analyzes competitor source code, extracts peripheral usage, generates API mapping | Built-in |
-| **NuTRM** | Queries Nuvoton TRM to find matching peripherals, registers, pin assignments, and clock config | [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-trm-chatbot) |
-| **NuCodeGen** | Generates Nuvoton initialization code (clock, GPIO, peripherals) from a GUI configurator | [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-nucodegen) |
+Instead of manually searching datasheets, cross-referencing registers, and writing initialization code from scratch, you can let these tools do the heavy lifting while you focus on your application logic.
 
-### How It Differs from the Manual Approach
+| Extension | How It Helps You | Link |
+|-----------|-----------------|------|
+| **NuTRM** | Ask questions about Nuvoton chip peripherals, registers, clocks, and pinouts — get instant answers with TRM citations | [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-trm-chatbot) |
+| **NuCodeGen** | Visually configure your target Nuvoton chip and generate ready-to-use initialization C code | [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-nucodegen) |
 
-| Aspect | Manual Way | Automatic Way |
-|--------|-----------|---------------|
-| Code analysis | You read the competitor code yourself | Copilot reads and summarizes the code |
-| Peripheral mapping | You search TRM yourself | Copilot + NuTRM batch-query all peripherals |
-| Init code | You configure peripheral by hand | NuCodeGen generates from your config; Copilot helps fill gaps |
-| API porting | You map HAL calls manually | Copilot generates the full mapping table |
+### What You'll Need
+
+- Your existing STM32F4 (or other competitor) source code
+- The competitor chip part number (e.g., STM32F407)
+- A target Nuvoton NuMicro chip (e.g., M487)
 
 ---
 
-## Prerequisites
+## Setup
 
-1. **VS Code** 1.110+
-2. **GitHub Copilot** installed and signed in
-3. **NuTRM** extension installed
-4. **NuCodeGen** extension installed
-5. Competitor source code opened in VS Code workspace
-6. Target Nuvoton chip decided (e.g., M487)
+1. Install **VS Code** 1.110 or higher.
+2. Install and sign in to **GitHub Copilot**.
+3. Install the **NuTRM** extension from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-trm-chatbot).
+4. Install the **NuCodeGen** extension from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-nucodegen).
+5. Open your STM32F4 project in VS Code.
 
 ---
 
-## Automated Workflow
+## How to Use the Tools — Step by Step
 
-### Phase 1 — Let Copilot Analyze the Competitor Code
+Below, we show you exactly how NuTRM and NuCodeGen assist at each step.
 
-Open the competitor project in VS Code and use **Copilot Chat** to extract all the information you need in one shot.
+### Step 1 — Understand Your STM32F4 Code (Copilot Assists)
 
-**Prompt (paste into Copilot Chat):**
+**Porting Guide reference:** *Step 1 — Analyze the Competitor Project*
+
+Open your STM32F4 project in VS Code and ask **Copilot Chat** to analyze it for you:
+
+**Prompt:**
 
 ```text
 Analyze the source code in this workspace. This is a project for an STM32F407 MCU.
@@ -54,9 +55,9 @@ Extract and summarize:
 Output as a structured markdown table.
 ```
 
-> **Result:** Copilot scans all `.c` / `.h` files and returns a comprehensive peripheral summary table — no manual code reading required.
+Copilot scans your `.c` / `.h` files and returns a summary like this:
 
-#### Example Copilot Output
+#### Example Output
 
 ```markdown
 | Peripheral | Instance | Config | Pins | IRQ |
@@ -70,13 +71,17 @@ Output as a structured markdown table.
 | Clock | — | HSE 8 MHz → PLL → 168 MHz SYSCLK | — | — |
 ```
 
+This gives you the complete list of peripherals to migrate — without reading every source file yourself.
+
 ---
 
-### Phase 2 — Query NuTRM for Nuvoton Peripheral Matching
+### Step 2 — Find the Matching NuMicro Peripherals (NuTRM Assists)
 
-With the competitor peripheral table from Phase 1, switch to the **NuTRM** agent and batch-query all peripherals against the target Nuvoton chip.
+**Porting Guide reference:** *Step 2 — Find the Matching Nuvoton Peripheral Features*
 
-**Prompt (paste into NuTRM Chat):**
+Now take the peripheral list from Step 1 and ask **NuTRM** to find the Nuvoton equivalents. Open the Copilot Chat Panel, select the **NuTRM** agent, and use the `/{chip}` slash command:
+
+**Prompt:**
 
 ```text
 /M480 I'm migrating from STM32F407 to M487. I need the following peripherals:
@@ -93,14 +98,14 @@ For each, tell me:
 3. Any feature differences or limitations compared to STM32F4
 ```
 
-> **Result:** NuTRM returns the Nuvoton equivalents with **TRM citations** — direct links to the exact documentation sections.
+NuTRM searches the M487 Technical Reference Manual and returns answers with **clickable TRM citations** — you can click any link to jump directly to the official documentation.
 
-#### Example Combined Mapping Table
+#### Example Result — Peripheral Mapping Table
 
-After merging Copilot's analysis with NuTRM's answers:
+Combine Copilot's analysis (Step 1) with NuTRM's answers to build your mapping:
 
-| Function | STM32F407 | M487 (NuTRM) | Notes |
-|----------|-----------|--------------|-------|
+| Function | STM32F407 | M487 (from NuTRM) | Notes |
+|----------|-----------|-------------------|-------|
 | Debug UART | USART1 (PA9/PA10) | UART0 (PB12 TX / PB13 RX) | Both support 115200 8N1 |
 | SPI Flash | SPI1 Master (PA5–PA7) | SPI0 Master (PA0–PA3) | M487 SPI0 supports up to 50 MHz |
 | I2C Sensor | I2C1 (PB6/PB7) | I2C0 (PA4 SDA / PA5 SCL) | 400 kHz fast mode supported |
@@ -109,13 +114,19 @@ After merging Copilot's analysis with NuTRM's answers:
 | LED | GPIOA PA5 | GPIOC PC9 | Direct GPIO push-pull output |
 | System Clock | HSE 8 MHz → PLL → 168 MHz | HXT 12 MHz → PLL → 192 MHz | Adjust timing constants |
 
+> **NuTRM advantage:** Every answer includes a direct link to the TRM section, so you don't need to search the PDF manually.
+
 ---
 
-### Phase 3 — Generate Initialization Code with NuCodeGen
+### Step 3 — Generate Initialization Code (NuCodeGen Assists)
+
+**Porting Guide reference:** *Step 3 — Generate Initialization Code*
+
+With the peripheral mapping from Step 2, use **NuCodeGen** to generate all the Nuvoton initialization code — no need to write `SYS_Init()`, clock setup, or MFP pin configuration by hand.
 
 1. Open **NuCodeGen** in VS Code (Command Palette → `NuCodeGen`).
-2. Select chip: **M487JIDAE** (or your specific part number).
-3. Configure peripherals based on the mapping table from Phase 2:
+2. Select your target chip (e.g., **M487JIDAE**).
+3. Configure each peripheral to match the mapping table from Step 2:
 
 | NuCodeGen Setting | Value |
 |-------------------|-------|
@@ -128,18 +139,22 @@ After merging Copilot's analysis with NuTRM's answers:
 | EADC | Ch0, Ch1 enabled |
 | PC.9 | GPIO Output |
 
-4. Click **Generate** → NuCodeGen produces:
+4. Click **Generate** → NuCodeGen produces ready-to-use C files:
    - `clk_conf.c` — clock tree configuration
    - `sys_init.c` — `SYS_Init()` with MFP (multi-function pin) setup
    - Peripheral-specific init functions
 
+> **NuCodeGen advantage:** You get correct API-level init code without reading the BSP yourself. The generated code handles clock gating, pin MFP selection, and peripheral configuration in the right order.
+
 ---
 
-### Phase 4 — Auto-Generate the API Porting Layer with Copilot
+### Step 4 — Map STM32 HAL Calls to Nuvoton BSP (Copilot Assists)
 
-Use Copilot to generate the HAL-to-BSP mapping code automatically.
+**Porting Guide reference:** *Step 4 — Port the Application Logic*
 
-**Prompt (paste into Copilot Chat with competitor code attached):**
+Now you need to replace STM32 HAL function calls with Nuvoton BSP equivalents. Ask **Copilot** to generate the mapping:
+
+**Prompt:**
 
 ```text
 I'm porting this STM32F4 project to Nuvoton M487.
@@ -188,9 +203,11 @@ Generate:
 
 ---
 
-### Phase 5 — Verify and Fill Gaps with NuTRM
+### Step 5 — Verify Register Details and Fill Gaps (NuTRM Assists)
 
-For any peripheral where Copilot's output needs register-level precision, query NuTRM:
+**Porting Guide reference:** *Step 5 — Verify Register-Level Details*
+
+During porting, you'll inevitably hit cases where you need to check exact register bit fields, timing constraints, or pin alternatives. This is where NuTRM shines — ask it directly instead of searching through a 1000+ page PDF:
 
 ```text
 /M480 Show the SPI_CTL register bit fields for SPI0
@@ -198,77 +215,88 @@ For any peripheral where Copilot's output needs register-level precision, query 
 /M480 What is the EADC module's sample-and-hold time configuration?
 
 /M480 Show the multi-function pin register for UART0 TX on PB12
+
+/M480 What is the interrupt vector number for UART0?
+
+/M480 What are the clock divider options for TIMER0?
 ```
 
-NuTRM returns the exact register layout with **clickable TRM citations**, so every detail is traceable to the official documentation.
+Every answer includes **clickable TRM citations** — you can verify the information by clicking the link to jump to the exact section in the official TRM document.
+
+> **When to use NuTRM during porting:**
+> - A peripheral doesn't behave as expected — check the register configuration
+> - You need to pick an alternative pin — ask about MFP options
+> - You're unsure about clock divider values — ask for the exact register fields
+> - You need the interrupt vector name or number — NuTRM knows it
 
 
 ---
 
-## End-to-End Summary
+## Summary: Which Tool Helps Where
 
 ```
-┌─────────────────────────────┐
-│   Competitor Source Code     │
-│   + Chip Part Number         │
-└──────────┬──────────────────┘
+┌───────────────────────────────────────┐
+│   Your STM32F4 Source Code            │
+│   + Chip Part Number                  │
+└──────────┬────────────────────────────┘
            │
            ▼
-┌─────────────────────────────┐
-│  Phase 1: Copilot Analyzes  │  ← GitHub Copilot reads all .c/.h files
-│  → Peripheral summary table │
-└──────────┬──────────────────┘
+┌───────────────────────────────────────┐
+│  Step 1: Copilot analyzes your code   │  ← understands your STM32 project
+│  → "what peripherals do I use?"       │
+└──────────┬────────────────────────────┘
            │
            ▼
-┌─────────────────────────────┐
-│  Phase 2: NuTRM Matches     │  ← NuTRM queries Nuvoton TRM
-│  → Nuvoton peripheral map   │
-└──────────┬──────────────────┘
+┌───────────────────────────────────────┐
+│  Step 2: NuTRM finds Nuvoton matches  │  ← searches M487 TRM for you
+│  → "which M487 peripheral matches?"   │
+└──────────┬────────────────────────────┘
            │
            ▼
-┌─────────────────────────────┐
-│  Phase 3: NuCodeGen Builds  │  ← NuCodeGen generates init code
-│  → Clock, GPIO, periph init │
-└──────────┬──────────────────┘
+┌───────────────────────────────────────┐
+│  Step 3: NuCodeGen generates init     │  ← produces ready-to-use C code
+│  → clock, GPIO, peripheral setup      │
+└──────────┬────────────────────────────┘
            │
            ▼
-┌─────────────────────────────┐
-│  Phase 4: Copilot Ports     │  ← Copilot generates API mapping
-│  → HAL wrapper + IRQ rename │
-└──────────┬──────────────────┘
+┌───────────────────────────────────────┐
+│  Step 4: Copilot maps HAL → BSP      │  ← rewrites API calls for you
+│  → wrapper header + IRQ renaming      │
+└──────────┬────────────────────────────┘
            │
            ▼
-┌─────────────────────────────┐
-│  Phase 5: NuTRM Verifies    │  ← NuTRM confirms register details
-│  → Exact register citations │
-└─────────────────────────────┘
-└─────────────────────────────┘
+┌───────────────────────────────────────┐
+│  Step 5: NuTRM verifies details       │  ← confirms register-level info
+│  → exact bit fields with TRM links    │
+└───────────────────────────────────────┘
 ```
 
 ---
 
-## Key Prompts Cheat Sheet
+## Quick Prompt Reference
 
-| Phase | Tool | Prompt |
-|-------|------|--------|
-| 1 — Analyze | Copilot | `Analyze this STM32F407 project. Extract all peripherals, pins, clocks, IRQs, and DMA as a table.` |
-| 2 — Match | NuTRM | `/M480 I need UART 115200, SPI Master 10 MHz, I2C 400 kHz, Timer 1 ms, ADC 2ch. Map each to M487.` |
-| 3 — Generate | NuCodeGen | *(GUI)* Select M487 → configure peripherals → Generate |
-| 4 — Port | Copilot | `Generate STM32 HAL → Nuvoton BSP mapping and a porting_layer.h wrapper.` |
-| 5 — Verify | NuTRM | `/M480 Show {register_name} bit fields` |
+| Porting Step | Assistant | What to Ask |
+|-------------|-----------|-------------|
+| Analyze STM32 code | Copilot | `Analyze this STM32F407 project. List all peripherals, pins, clocks, IRQs, and DMA as a table.` |
+| Find NuMicro equivalents | NuTRM | `/M480 I need UART 115200, SPI Master 10 MHz, I2C 400 kHz, Timer 1 ms, ADC 2ch. Map each to M487.` |
+| Generate init code | NuCodeGen | *(GUI)* Select M487 → configure peripherals → Generate |
+| Map HAL to BSP | Copilot | `Map these STM32 HAL calls to Nuvoton BSP equivalents: HAL_UART_Transmit, HAL_SPI_TransmitReceive, ...` |
+| Check registers | NuTRM | `/M480 Show the SPI_CTL register bit fields` |
+| Check pin options | NuTRM | `/M480 Which pins support UART0 TX?` |
+| Compare chips | NuTRM | `Compare UART features of M460 vs M480` |
 
 
 ---
 
-## Tips for Other Competitor MCUs
+## Not Just STM32 — Works for Any Competitor
 
-This workflow is **not limited to STM32**. The same approach works for any competitor:
+The same approach works regardless of which competitor MCU you're migrating from. The only difference is the prompt wording in Step 1:
 
-| Competitor | Phase 1 Prompt Adjustment |
-|------------|--------------------------|
+| Your Current MCU | Step 1 Prompt Adjustment |
+|------------------|---------------------------|
 | **Renesas RA** | `Analyze this Renesas RA6M4 project. Extract all r_sce, r_uart, r_spi driver usage...` |
 | **NXP LPC** | `Analyze this LPC5500 project. Extract all MCUXpresso SDK driver calls...` |
 | **TI MSP432** | `Analyze this MSP432 project. Extract all DriverLib peripheral usage...` |
 | **Microchip SAM** | `Analyze this SAMD51 project. Extract all ASF/Harmony driver calls...` |
 
-Simply replace the chip name and HAL/SDK terminology in the prompts — the NuTRM + NuCodeGen steps remain the same.
+Steps 2–5 (NuTRM + NuCodeGen + Copilot) remain exactly the same — they work on the Nuvoton side, which doesn't change regardless of where you're migrating from.
