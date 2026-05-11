@@ -1,5 +1,5 @@
 <!-- markdownlint-disable MD033 -->
-# Using NuTRM and NuCodeGen to Port Your STM32F4 Code to NuMicro M487
+# Using NuTRM and NuCodeGen to Port Your STM32F103 Code to NuMicro M487
 
 ## Introduction
 
@@ -14,8 +14,8 @@ Instead of manually searching datasheets, cross-referencing registers, and writi
 
 ### What You'll Need
 
-- Your existing STM32F4 (or other competitor) source code
-- The competitor chip part number (e.g., STM32F407)
+- Your existing STM32F103 (or other competitor) source code
+- The competitor chip part number (e.g., STM32F103)
 - A target Nuvoton NuMicro chip (e.g., M487)
 
 ---
@@ -26,7 +26,7 @@ Instead of manually searching datasheets, cross-referencing registers, and writi
 2. Install and sign in to **GitHub Copilot**.
 3. Install the **NuTRM** extension from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-trm-chatbot).
 4. Install the **NuCodeGen** extension from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-nucodegen).
-5. Open your STM32F4 project in VS Code.
+5. Open your STM32F103 project in VS Code.
 
 ---
 
@@ -34,16 +34,16 @@ Instead of manually searching datasheets, cross-referencing registers, and writi
 
 Below, we show you exactly how NuTRM and NuCodeGen assist at each step.
 
-### Step 1 — Understand Your STM32F4 Code (Copilot Assists)
+### Step 1 — Understand Your STM32F103 Code (Copilot Assists)
 
 **Porting Guide reference:** *Step 1 — Analyze the Competitor Project*
 
-Open your STM32F4 project in VS Code and ask **Copilot Chat** to analyze it for you:
+Open your STM32F103 project in VS Code and ask **Copilot Chat** to analyze it for you:
 
 **Prompt:**
 
 ```text
-Analyze the source code in this workspace. This is a project for an STM32F407 MCU.
+Analyze the source code in this workspace. This is a project for an STM32F103 MCU.
 Extract and summarize:
 1. All peripherals used (UART, SPI, I2C, Timer, PWM, ADC, DMA, GPIO, etc.)
 2. For each peripheral: instance name, configuration (baud rate, clock speed, mode, etc.)
@@ -68,7 +68,7 @@ Copilot scans your `.c` / `.h` files and returns a summary like this:
 | Timer | TIM2 | 1 ms periodic | — | TIM2_IRQHandler |
 | ADC | ADC1 | Ch0, Ch1, 12-bit, single conv | PA0, PA1 | — |
 | GPIO | GPIOA | PA5 output (LED) | PA5 | — |
-| Clock | — | HSE 8 MHz → PLL → 168 MHz SYSCLK | — | — |
+| Clock | — | HSE 8 MHz → PLL → 72 MHz SYSCLK | — | — |
 ```
 
 This gives you the complete list of peripherals to migrate — without reading every source file yourself.
@@ -84,7 +84,7 @@ Now take the peripheral list from Step 1 and ask **NuTRM** to find the Nuvoton e
 **Prompt:**
 
 ```text
-/M480 I'm migrating from STM32F407 to M487. I need the following peripherals:
+/M480 I'm migrating from STM32F103 to M487. I need the following peripherals:
 - UART: 115200 baud, 8N1 (was USART1 on STM32)
 - SPI: Master mode, 10 MHz (was SPI1)
 - I2C: Master, 400 kHz fast mode (was I2C1)
@@ -95,7 +95,7 @@ Now take the peripheral list from Step 1 and ask **NuTRM** to find the Nuvoton e
 For each, tell me:
 1. Which M487 peripheral instance to use
 2. Available pins (multi-function pin selection)
-3. Any feature differences or limitations compared to STM32F4
+3. Any feature differences or limitations compared to STM32F103
 ```
 
 NuTRM searches the M487 Technical Reference Manual and returns answers with **clickable TRM citations** — you can click any link to jump directly to the official documentation.
@@ -104,7 +104,7 @@ NuTRM searches the M487 Technical Reference Manual and returns answers with **cl
 
 Combine Copilot's analysis (Step 1) with NuTRM's answers to build your mapping:
 
-| Function | STM32F407 | M487 (from NuTRM) | Notes |
+| Function | STM32F103 | M487 (from NuTRM) | Notes |
 |----------|-----------|-------------------|-------|
 | Debug UART | USART1 (PA9/PA10) | UART0 (PB12 TX / PB13 RX) | Both support 115200 8N1 |
 | SPI Flash | SPI1 Master (PA5–PA7) | SPI0 Master (PA0–PA3) | M487 SPI0 supports up to 50 MHz |
@@ -112,7 +112,7 @@ Combine Copilot's analysis (Step 1) with NuTRM's answers to build your mapping:
 | System Tick | TIM2, 1 ms | TIMER0, periodic mode | Use TIMER_Open() with 1000 Hz |
 | Analog Input | ADC1 Ch0/Ch1 (PA0/PA1) | EADC Ch0/Ch1 (PB0/PB1) | M487 uses Enhanced ADC (EADC) |
 | LED | GPIOA PA5 | GPIOC PC9 | Direct GPIO push-pull output |
-| System Clock | HSE 8 MHz → PLL → 168 MHz | HXT 12 MHz → PLL → 192 MHz | Adjust timing constants |
+| System Clock | HSE 8 MHz → PLL → 72 MHz | HXT 12 MHz → PLL → 192 MHz | Adjust timing constants |
 
 > **NuTRM advantage:** Every answer includes a direct link to the TRM section, so you don't need to search the PDF manually.
 
@@ -157,7 +157,7 @@ Now you need to replace STM32 HAL function calls with Nuvoton BSP equivalents. A
 **Prompt:**
 
 ```text
-I'm porting this STM32F4 project to Nuvoton M487.
+I'm porting this STM32F103 project to Nuvoton M487.
 Here is the peripheral mapping:
 - USART1 → UART0
 - SPI1 → SPI0
@@ -236,13 +236,13 @@ Every answer includes **clickable TRM citations** — you can verify the informa
 
 ```
 ┌───────────────────────────────────────┐
-│   Your STM32F4 Source Code            │
+│   Your STM32F103 Source Code           │
 │   + Chip Part Number                  │
 └──────────┬────────────────────────────┘
            │
            ▼
 ┌───────────────────────────────────────┐
-│  Step 1: Copilot analyzes your code   │  ← understands your STM32 project
+│  Step 1: Copilot analyzes your code   │  ← understands your STM32F103 project
 │  → "what peripherals do I use?"       │
 └──────────┬────────────────────────────┘
            │
@@ -277,8 +277,8 @@ Every answer includes **clickable TRM citations** — you can verify the informa
 
 | Porting Step | Assistant | What to Ask |
 |-------------|-----------|-------------|
-| Analyze STM32 code | Copilot | `Analyze this STM32F407 project. List all peripherals, pins, clocks, IRQs, and DMA as a table.` |
-| Find NuMicro equivalents | NuTRM | `/M480 I need UART 115200, SPI Master 10 MHz, I2C 400 kHz, Timer 1 ms, ADC 2ch. Map each to M487.` |
+| Analyze STM32 code | Copilot | `Analyze this STM32F103 project. List all peripherals, pins, clocks, IRQs, and DMA as a table.` |
+| Find NuMicro equivalents | NuTRM | `/M480 I'm migrating from STM32F103. I need UART 115200, SPI Master 10 MHz, I2C 400 kHz, Timer 1 ms, ADC 2ch. Map each to M487.` |
 | Generate init code | NuCodeGen | *(GUI)* Select M487 → configure peripherals → Generate |
 | Map HAL to BSP | Copilot | `Map these STM32 HAL calls to Nuvoton BSP equivalents: HAL_UART_Transmit, HAL_SPI_TransmitReceive, ...` |
 | Check registers | NuTRM | `/M480 Show the SPI_CTL register bit fields` |
