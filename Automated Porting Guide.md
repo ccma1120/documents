@@ -10,7 +10,7 @@ Instead of manually searching datasheets, cross-referencing registers, and writi
 | Extension | How It Helps You | Link |
 |-----------|-----------------|------|
 | **NuTRM** | Ask questions about Nuvoton chip peripherals, registers, clocks, and pinouts — get instant answers with TRM citations | [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-trm-chatbot) |
-| **NuCodeGen** | Visually configure your target Nuvoton chip and generate ready-to-use initialization C code | [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-nucodegen) |
+| **NuCodeGen** | Ask the NuCodeGen agent to generate initialization C code for your target Nuvoton chip — clock, GPIO, and peripheral setup via chat prompts | [Marketplace](https://marketplace.visualstudio.com/items?itemName=Nuvoton.nuvoton-nucodegen) |
 
 ### What You'll Need
 
@@ -122,29 +122,25 @@ Combine Copilot's analysis (Step 1) with NuTRM's answers to build your mapping:
 
 **Porting Guide reference:** *Step 3 — Generate Initialization Code*
 
-With the peripheral mapping from Step 2, use **NuCodeGen** to generate all the Nuvoton initialization code — no need to write `SYS_Init()`, clock setup, or MFP pin configuration by hand.
+With the peripheral mapping from Step 2, use the **NuCodeGen** chatbot agent to generate all the Nuvoton initialization code — no need to write `SYS_Init()`, clock setup, or MFP pin configuration by hand.
 
-1. Open **NuCodeGen** in VS Code (Command Palette → `NuCodeGen`).
-2. Select your target chip (e.g., **M487JIDAE**).
-3. Configure each peripheral to match the mapping table from Step 2:
+Open the Copilot Chat Panel, select the **NuCodeGen** agent, and tell it what you need:
 
-| NuCodeGen Setting | Value |
-|-------------------|-------|
-| Clock Source | HXT 12 MHz |
-| PLL Output | 192 MHz |
-| UART0 | 115200 baud, 8N1 |
-| SPI0 | Master, CPOL=0 CPHA=0, 10 MHz |
-| I2C0 | 400 kHz |
-| TIMER0 | Periodic, 1 ms |
-| EADC | Ch0, Ch1 enabled |
-| PC.9 | GPIO Output |
+**Prompt:**
 
-4. Click **Generate** → NuCodeGen produces ready-to-use C files:
-   - /clk clock tree configuration
-   - /pin with MFP (multi-function pin) setup
-   - /UART Peripheral-specific init functions
+```text
+I'm using M487JIDAE. Generate initialization code for:
+- System clock: HXT 12 MHz → PLL → 192 MHz
+- UART0: 115200 baud, 8N1
+- SPI0: Master, CPOL=0, CPHA=0, 10 MHz
+- I2C0: 400 kHz
+- TIMER0: Periodic, 1 ms interrupt
+- EADC: Ch0, Ch1 enabled
+- PC.9: GPIO output (LED)
+```
 
-> **NuCodeGen advantage:** You get correct API-level init code without reading the BSP yourself. The generated code handles clock gating, pin MFP selection, and peripheral configuration in the right order.
+
+> **NuCodeGen advantage:** You get correct API-level init code by describing what you need in natural language — no need to read the BSP yourself. The generated code handles clock gating, pin MFP selection, and peripheral configuration in the right order.
 
 ---
 
@@ -254,7 +250,7 @@ Every answer includes **clickable TRM citations** — you can verify the informa
            │
            ▼
 ┌───────────────────────────────────────┐
-│  Step 3: NuCodeGen generates init     │  ← produces ready-to-use C code
+│  Step 3: NuCodeGen agent generates    │  ← ask it via chat prompts
 │  → clock, GPIO, peripheral setup      │
 └──────────┬────────────────────────────┘
            │
@@ -279,7 +275,7 @@ Every answer includes **clickable TRM citations** — you can verify the informa
 |-------------|-----------|-------------|
 | Analyze STM32 code | Copilot | `Analyze this STM32F103 project. List all peripherals, pins, clocks, IRQs, and DMA as a table.` |
 | Find NuMicro equivalents | NuTRM | `/M480 I'm migrating from STM32F103. I need UART 115200, SPI Master 10 MHz, I2C 400 kHz, Timer 1 ms, ADC 2ch. Map each to M487.` |
-| Generate init code | NuCodeGen | *(GUI)* Select M487 → configure peripherals → Generate |
+| Generate init code | NuCodeGen | `I'm using M487JIDAE. Generate init code for UART0 115200, SPI0 Master 10 MHz, I2C0 400 kHz, TIMER0 1 ms, EADC Ch0/Ch1, PC.9 GPIO output.` |
 | Map HAL to BSP | Copilot | `Map these STM32 HAL calls to Nuvoton BSP equivalents: HAL_UART_Transmit, HAL_SPI_TransmitReceive, ...` |
 | Check registers | NuTRM | `/M480 Show the SPI_CTL register bit fields` |
 | Check pin options | NuTRM | `/M480 Which pins support UART0 TX?` |
