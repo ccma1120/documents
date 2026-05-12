@@ -140,9 +140,9 @@ With the peripheral mapping from Step 2, use **NuCodeGen** to generate all the N
 | PC.9 | GPIO Output |
 
 4. Click **Generate** → NuCodeGen produces ready-to-use C files:
-   - `clk_conf.c` — clock tree configuration
-   - `sys_init.c` — `SYS_Init()` with MFP (multi-function pin) setup
-   - Peripheral-specific init functions
+   - /clk clock tree configuration
+   - /pin with MFP (multi-function pin) setup
+   - /UART Peripheral-specific init functions
 
 > **NuCodeGen advantage:** You get correct API-level init code without reading the BSP yourself. The generated code handles clock gating, pin MFP selection, and peripheral configuration in the right order.
 
