@@ -36,8 +36,6 @@ Below, we show you exactly how NuTRM and NuCodeGen assist at each step.
 
 ### Step 1 — Understand Your STM32F103 Code (Copilot Assists)
 
-**Porting Guide reference:** *Step 1 — Analyze the Competitor Project*
-
 Open your STM32F103 project in VS Code and ask **Copilot Chat** to analyze it for you:
 
 **Prompt:**
@@ -76,8 +74,6 @@ This gives you the complete list of peripherals to migrate — without reading e
 ---
 
 ### Step 2 — Find the Matching NuMicro Peripherals (NuTRM Assists)
-
-**Porting Guide reference:** *Step 2 — Find the Matching Nuvoton Peripheral Features*
 
 Now take the peripheral list from Step 1 and ask **NuTRM** to find the Nuvoton equivalents. Open the Copilot Chat Panel, select the **NuTRM** agent, and use the `/{chip}` slash command:
 
@@ -120,9 +116,7 @@ Combine Copilot's analysis (Step 1) with NuTRM's answers to build your mapping:
 
 ### Step 3 — Generate Initialization Code (NuCodeGen Assists)
 
-**Porting Guide reference:** *Step 3 — Generate Initialization Code*
-
-With the peripheral mapping from Step 2, use the **NuCodeGen** chatbot agent to generate all the Nuvoton initialization code — no need to write `SYS_Init()`, clock setup, or MFP pin configuration by hand.
+With the peripheral mapping from Step 2, use the **NuCodeGen** chatbot agent to generate the Nuvoton **startup initialization code** — the one-time setup that runs before your application logic: `SYS_Init()`, clock configuration, and MFP pin assignment.
 
 Open the Copilot Chat Panel, select the **NuCodeGen** agent, and tell it what you need:
 
@@ -144,16 +138,38 @@ I'm using M487JIDAE. Generate initialization code for:
 
 ---
 
-### Step 4 — Map STM32 HAL Calls to Nuvoton BSP (Copilot Assists)
+### Step 4 — Replace STM32 HAL Calls with Nuvoton BSP (Copilot + NuCodeGen Assist)
 
-**Porting Guide reference:** *Step 4 — Port the Application Logic*
+With init code generated in Step 3, now port your **application logic** — the runtime code that sends data, reads sensors, and handles interrupts.
 
-Now you need to replace STM32 HAL function calls with Nuvoton BSP equivalents. Ask **Copilot** to generate the mapping:
+STM32 HAL and Nuvoton BSP have **completely different APIs** — STM32 uses handle structs (`&huart1`), while Nuvoton uses peripheral pointers (`UART0`). You cannot bridge them with simple `#define` macros. Instead, use **Copilot** to rewrite the code and **NuCodeGen** to generate correct Nuvoton BSP usage examples.
 
-**Prompt:**
+#### 4a. Ask NuCodeGen for Runtime API Examples
+
+Step 3 generated the *init* code (called once at startup). Now you need to know how to *use* each peripheral at runtime — send bytes, read sensors, handle conversions. Ask **NuCodeGen**:
+
+**Prompt (NuCodeGen agent):**
+
+```text
+I'm using M487JIDAE. Show me how to:
+- Send and receive data on UART0
+- Do a SPI master transmit/receive on SPI0
+- Write/read bytes as I2C master on I2C0
+- Start and read EADC conversion on channel 0
+- Set up a TIMER0 periodic interrupt at 1 ms
+```
+
+NuCodeGen returns ready-to-use code snippets using the Nuvoton BSP API. Keep this output visible in the chat — Copilot will use it as reference in the next step.
+
+#### 4b. Ask Copilot to Rewrite the Source Code
+
+With the NuCodeGen BSP examples from Step 4a still in your chat context, ask **Copilot** to replace the STM32 HAL calls in your project:
+
+**Prompt (Copilot):**
 
 ```text
 I'm porting this STM32F103 project to Nuvoton M487.
+Use the Nuvoton BSP examples from the NuCodeGen output above as reference.
 Here is the peripheral mapping:
 - USART1 → UART0
 - SPI1 → SPI0
@@ -162,48 +178,76 @@ Here is the peripheral mapping:
 - ADC1 → EADC
 - GPIOA PA5 → GPIOC PC9
 
-Generate:
-1. A mapping table of STM32 HAL calls → Nuvoton BSP calls
-2. A wrapper header file that #defines STM32 HAL names to Nuvoton equivalents
-3. Updated interrupt handler function names
+For every STM32 HAL call in the source code, rewrite it using the Nuvoton BSP API.
+Also update all interrupt handler function names to M487 equivalents.
 ```
 
-#### Example Copilot-Generated Wrapper
+#### Example — Before vs After
 
-```c
-/* porting_layer.h — STM32 HAL → Nuvoton BSP compatibility shim */
+| STM32 HAL (before) | Nuvoton BSP (after) |
+|---|---|
+| `HAL_UART_Transmit(&huart1, buf, len, 1000)` | `UART_Write(UART0, buf, len)` |
+| `HAL_UART_Receive_IT(&huart1, buf, len)` | `UART_Read(UART0, buf, len)` |
+| `HAL_SPI_TransmitReceive(&hspi1, tx, rx, len, 1000)` | `SPI_WRITE_TX(SPI0, tx[i])` / `SPI_READ_RX(SPI0)` in a loop |
+| `HAL_I2C_Master_Transmit(&hi2c1, addr, buf, len, 1000)` | `I2C_WriteByte(I2C0, addr, buf[i])` |
+| `HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET)` | `GPIO_SET_PIN(PC, BIT9)` |
+| `HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5)` | `GPIO_TOGGLE(PC, BIT9)` |
+| `HAL_ADC_Start(&hadc1)` | `EADC_START_CONV(EADC, BIT0 \| BIT1)` |
+| `HAL_ADC_GetValue(&hadc1)` | `EADC_GET_CONV_DATA(EADC, 0)` |
 
-#ifndef PORTING_LAYER_H
-#define PORTING_LAYER_H
+#### Interrupt Handler Renaming
 
-#include "NuMicro.h"
+STM32 and Nuvoton use **different IRQ function names**. The vector table calls these by exact name — using the wrong name means your handler silently never runs.
 
-/* UART */
-#define PORTING_UART_PORT       UART0
-#define PORTING_UART_BAUDRATE   115200
+| STM32 IRQ Handler | Nuvoton M487 Equivalent |
+|---|---|
+| `USART1_IRQHandler()` | `UART0_IRQHandler()` |
+| `SPI1_IRQHandler()` | `SPI0_IRQHandler()` |
+| `I2C1_EV_IRQHandler()` | `I2C0_IRQHandler()` |
+| `TIM2_IRQHandler()` | `TMR0_IRQHandler()` |
+| `ADC1_2_IRQHandler()` | `EADC0_IRQHandler()` |
 
-/* SPI */
-#define PORTING_SPI_PORT        SPI0
-#define PORTING_SPI_SPEED       10000000
-
-/* I2C */
-#define PORTING_I2C_PORT        I2C0
-
-/* GPIO — LED */
-#define LED_ON()    GPIO_SET_PIN(PC, BIT9)
-#define LED_OFF()   GPIO_CLR_PIN(PC, BIT9)
-#define LED_TOGGLE() GPIO_TOGGLE(PC, BIT9)
-
-#endif /* PORTING_LAYER_H */
-```
+> **Key difference:** STM32 HAL uses handle-based APIs with timeout parameters (e.g., `HAL_UART_Transmit(&huart1, buf, len, 1000)`). Nuvoton BSP uses direct peripheral-pointer APIs without timeouts (e.g., `UART_Write(UART0, buf, len)`). Copilot can rewrite these for you, but review the result to ensure timeout/error-handling logic is preserved in your application layer.
 
 ---
 
-### Step 5 — Verify Register Details and Fill Gaps (NuTRM Assists)
+### Step 5 — Verify on Hardware and Debug with NuTRM
 
-**Porting Guide reference:** *Step 5 — Verify Register-Level Details*
+After Copilot rewrites the API calls, you need to verify each peripheral works correctly. Since this is bare-metal MCU code that interacts with real hardware, **traditional unit tests aren't practical** — the BSP calls talk directly to peripheral registers that don't exist on your PC.
 
-During porting, you'll inevitably hit cases where you need to check exact register bit fields, timing constraints, or pin alternatives. This is where NuTRM shines — ask it directly instead of searching through a 1000+ page PDF:
+#### 5a. Test One Peripheral at a Time on the M487 Board
+
+| Order | Peripheral | How to Verify |
+|-------|-----------|---------------|
+| 1 | **Clock** | Check system clock output on a pin with an oscilloscope, or verify `SystemCoreClock` value in the debugger |
+| 2 | **GPIO (LED)** | LED toggles visually — simplest sanity check |
+| 3 | **UART** | Send a "Hello" string and check it in a serial terminal (e.g., PuTTY, Tera Term) |
+| 4 | **Timer** | Toggle a GPIO pin in the timer ISR and measure the interval with an oscilloscope or logic analyzer |
+| 5 | **SPI** | Read the JEDEC ID from the external SPI flash and compare with the datasheet value |
+| 6 | **I2C** | Read the WHO_AM_I register from the sensor and compare with the datasheet value |
+| 7 | **ADC (EADC)** | Apply a known voltage (e.g., 1.65 V = half of 3.3 V) and check the conversion result is ~2048 (12-bit) |
+
+> **Tip:** Test in the order above. If the clock is wrong, nothing else will work. If UART works, you can use `printf` to debug everything else.
+
+You can ask Copilot to generate simple test routines:
+
+**Prompt:**
+
+```text
+Generate a minimal test for each peripheral on M487:
+- UART0: transmit "Hello M487\n" at 115200 baud
+- GPIO PC.9: blink LED at 1 Hz
+- TIMER0: toggle a GPIO pin every 1 ms in ISR
+- SPI0: read SPI flash JEDEC ID (command 0x9F)
+- I2C0: read one byte from slave address 0x68 register 0x75
+- EADC: convert channel 0 and print result via UART
+
+Each test should be a standalone function I can call from main().
+```
+
+#### 5b. When Something Doesn't Work — Ask NuTRM
+
+When a peripheral doesn't behave as expected, use **NuTRM** to drill into register-level details instead of searching through a 1000+ page PDF:
 
 ```text
 /M480 Show the SPI_CTL register bit fields for SPI0
@@ -217,13 +261,14 @@ During porting, you'll inevitably hit cases where you need to check exact regist
 /M480 What are the clock divider options for TIMER0?
 ```
 
-Every answer includes **clickable TRM citations** — you can verify the information by clicking the link to jump to the exact section in the official TRM document.
+Every answer includes **clickable TRM citations** — click the link to jump to the exact section in the official TRM document.
 
-> **When to use NuTRM during porting:**
-> - A peripheral doesn't behave as expected — check the register configuration
-> - You need to pick an alternative pin — ask about MFP options
-> - You're unsure about clock divider values — ask for the exact register fields
-> - You need the interrupt vector name or number — NuTRM knows it
+> **Common debugging scenarios where NuTRM helps:**
+> - UART outputs garbage → check baud rate divider register and clock source
+> - SPI no response → verify MFP pin assignment and clock polarity/phase settings
+> - Timer ISR never fires → confirm correct IRQ vector name and NVIC enable
+> - I2C no ACK → check pull-up configuration and bus clock frequency register
+> - ADC result always 0 → verify channel mapping and trigger source configuration
 
 
 ---
@@ -232,7 +277,7 @@ Every answer includes **clickable TRM citations** — you can verify the informa
 
 ```
 ┌───────────────────────────────────────┐
-│   Your STM32F103 Source Code           │
+│   Your STM32F103 Source Code          │
 │   + Chip Part Number                  │
 └──────────┬────────────────────────────┘
            │
@@ -256,14 +301,14 @@ Every answer includes **clickable TRM citations** — you can verify the informa
            │
            ▼
 ┌───────────────────────────────────────┐
-│  Step 4: Copilot maps HAL → BSP      │  ← rewrites API calls for you
-│  → wrapper header + IRQ renaming      │
+│  Step 4: NuCodeGen + Copilot port    │  ← NuCodeGen shows BSP usage,
+│  → rewrite HAL calls + IRQ renaming   │    Copilot rewrites the code
 └──────────┬────────────────────────────┘
            │
            ▼
 ┌───────────────────────────────────────┐
-│  Step 5: NuTRM verifies details       │  ← confirms register-level info
-│  → exact bit fields with TRM links    │
+│  Step 5: Verify on HW + NuTRM debug  │  ← test peripherals, ask NuTRM
+│  → fix issues with TRM register info  │
 └───────────────────────────────────────┘
 ```
 
@@ -276,7 +321,9 @@ Every answer includes **clickable TRM citations** — you can verify the informa
 | Analyze STM32 code | Copilot | `Analyze this STM32F103 project. List all peripherals, pins, clocks, IRQs, and DMA as a table.` |
 | Find NuMicro equivalents | NuTRM | `/M480 I'm migrating from STM32F103. I need UART 115200, SPI Master 10 MHz, I2C 400 kHz, Timer 1 ms, ADC 2ch. Map each to M487.` |
 | Generate init code | NuCodeGen | `I'm using M487JIDAE. Generate init code for UART0 115200, SPI0 Master 10 MHz, I2C0 400 kHz, TIMER0 1 ms, EADC Ch0/Ch1, PC.9 GPIO output.` |
-| Map HAL to BSP | Copilot | `Map these STM32 HAL calls to Nuvoton BSP equivalents: HAL_UART_Transmit, HAL_SPI_TransmitReceive, ...` |
+| Get BSP usage examples | NuCodeGen | `I'm using M487JIDAE. Show me how to send/receive on UART0, SPI0 master transfer, I2C0 read/write, EADC convert ch0, TIMER0 1ms ISR.` |
+| Rewrite HAL to BSP | Copilot | `Rewrite all STM32 HAL calls in this project to Nuvoton BSP. USART1→UART0, SPI1→SPI0, I2C1→I2C0, TIM2→TIMER0, ADC1→EADC, PA5→PC9.` |
+| Generate test routines | Copilot | `Generate a standalone test function for each peripheral: UART0 hello, LED blink, TIMER0 toggle, SPI0 JEDEC ID, I2C0 WHO_AM_I, EADC ch0 read.` |
 | Check registers | NuTRM | `/M480 Show the SPI_CTL register bit fields` |
 | Check pin options | NuTRM | `/M480 Which pins support UART0 TX?` |
 | Compare chips | NuTRM | `Compare UART features of M460 vs M480` |
