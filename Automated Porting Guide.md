@@ -138,7 +138,7 @@ I'm using M487JIDAE. Generate initialization code for:
 
 ---
 
-### Step 4 — Replace STM32 HAL Calls with Nuvoton BSP (Copilot + NuCodeGen Assist)
+### Step 4 — Replace STM32 HAL Calls with Nuvoton BSP (Copilot + NuCodeGen + NuTRM Assist)
 
 With init code generated in Step 3, now port your **application logic** — the runtime code that sends data, reads sensors, and handles interrupts.
 
@@ -209,6 +209,48 @@ STM32 and Nuvoton use **different IRQ function names**. The vector table calls t
 
 > **Key difference:** STM32 HAL uses handle-based APIs with timeout parameters (e.g., `HAL_UART_Transmit(&huart1, buf, len, 1000)`). Nuvoton BSP uses direct peripheral-pointer APIs without timeouts (e.g., `UART_Write(UART0, buf, len)`). Copilot can rewrite these for you, but review the result to ensure timeout/error-handling logic is preserved in your application layer.
 
+#### 4c. Review Timing-Dependent Code
+
+Swapping API names is not enough — **any code that assumes a specific clock frequency will break** when moving from 72 MHz (STM32F103) to 192 MHz (M487). This is one of the most common and hardest-to-spot porting bugs.
+
+Ask **Copilot** to find all timing-sensitive code:
+
+**Prompt:**
+
+```text
+Search this project for all timing-dependent code:
+- Hard-coded delay loops (for-loop delays, busy-wait counters)
+- HAL_Delay() calls (STM32 uses ms; Nuvoton CLK_SysTickDelay() uses µs)
+- Timer reload/prescaler values calculated from a clock frequency constant
+- Baud rate divisor calculations that reference a specific clock speed
+- Timeout constants in communication protocols
+- Any #define or variable containing clock frequency (e.g., 72000000, SYSCLK, HSE_VALUE)
+
+For each, show the file, line, and what needs to change for M487 at 192 MHz HCLK.
+```
+
+**What to watch for:**
+
+| Timing Pattern | STM32F103 (72 MHz) | M487 (192 MHz) | Fix |
+|---|---|---|---|
+| `HAL_Delay(100)` — 100 ms delay | Uses SysTick at 1 kHz | `CLK_SysTickDelay(100000)` — takes **µs**, not ms | Convert ms → µs, or set up a 1 ms SysTick ISR with a counter |
+| `for(i=0; i<10000; i++)` busy wait | ~X µs at 72 MHz | ~X/2.67 µs at 192 MHz (2.67× faster) | Replace with `CLK_SysTickDelay()` or a timer-based delay |
+| `#define SYSCLK 72000000` | Used in baud rate / timer calcs | Wrong — M487 is 192 MHz | Use `SystemCoreClock` or `CLK_GetHCLKFreq()` instead |
+| Timer prescaler: `PSC = 72 - 1` | 72 MHz / 72 = 1 MHz tick | M487 timer clock may differ | Use `CLK_GetPCLK0Freq()` or `CLK_GetPCLK1Freq()` to derive prescaler |
+| UART baud divisor: manual calculation | Based on APB2 = 72 MHz | UART clock source may differ | Use `UART_Open(UART0, 115200)` — BSP calculates divisor for you |
+
+> **Rule of thumb:** Never hard-code clock frequencies. Always derive timing from `SystemCoreClock`, `CLK_GetHCLKFreq()`, `CLK_GetPCLK0Freq()`, or `CLK_GetPCLK1Freq()`. The Nuvoton BSP APIs (e.g., `UART_Open()`, `TIMER_Open()`, `SPI_Open()`) handle clock derivation internally — use them instead of manual register calculations.
+
+**NuTRM** can help you understand the M487 clock tree:
+
+```text
+/M480 What are the clock sources for UART0, SPI0, TIMER0, and EADC on M487?
+
+/M480 Show the clock tree — which peripherals use PCLK0 vs PCLK1?
+
+/M480 What is the relationship between HCLK, PCLK0, and PCLK1 on M487?
+```
+
 ---
 
 ### Step 5 — Verify on Hardware and Debug with NuTRM
@@ -226,6 +268,7 @@ After Copilot rewrites the API calls, you need to verify each peripheral works c
 | 5 | **SPI** | Read the JEDEC ID from the external SPI flash and compare with the datasheet value |
 | 6 | **I2C** | Read the WHO_AM_I register from the sensor and compare with the datasheet value |
 | 7 | **ADC (EADC)** | Apply a known voltage (e.g., 1.65 V = half of 3.3 V) and check the conversion result is ~2048 (12-bit) |
+| 8 | **Timing** | If you had `HAL_Delay(100)` (100 ms), verify the ported delay is still 100 ms with an oscilloscope. Check that timer ISR intervals match the expected period. Print `SystemCoreClock` via UART to confirm it equals 192000000 |
 
 > **Tip:** Test in the order above. If the clock is wrong, nothing else will work. If UART works, you can use `printf` to debug everything else.
 
@@ -303,6 +346,7 @@ Every answer includes **clickable TRM citations** — click the link to jump to 
 ┌───────────────────────────────────────┐
 │  Step 4: NuCodeGen + Copilot port    │  ← NuCodeGen shows BSP usage,
 │  → rewrite HAL calls + IRQ renaming   │    Copilot rewrites the code
+│  → review timing-dependent code       │    (delays, prescalers, clocks)
 └──────────┬────────────────────────────┘
            │
            ▼
@@ -326,6 +370,8 @@ Every answer includes **clickable TRM citations** — click the link to jump to 
 | Generate test routines | Copilot | `Generate a standalone test function for each peripheral: UART0 hello, LED blink, TIMER0 toggle, SPI0 JEDEC ID, I2C0 WHO_AM_I, EADC ch0 read.` |
 | Check registers | NuTRM | `/M480 Show the SPI_CTL register bit fields` |
 | Check pin options | NuTRM | `/M480 Which pins support UART0 TX?` |
+| Find timing issues | Copilot | `Search this project for hard-coded delays, clock frequency constants, and timer prescaler values that assume 72 MHz. List what needs to change for 192 MHz.` |
+| Check clock tree | NuTRM | `/M480 What are the clock sources for UART0, SPI0, TIMER0, and EADC? Which use PCLK0 vs PCLK1?` |
 | Compare chips | NuTRM | `Compare UART features of M460 vs M480` |
 
 
