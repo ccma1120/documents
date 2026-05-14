@@ -252,7 +252,7 @@ For each, show the file, line, and what needs to change for M487 at 192 MHz HCLK
 
 ---
 
-### 步驟 5 — 在硬體上驗證並使用 NuTRM 除錯
+### 步驟 5 — 在硬體上驗證並除錯
 
 Copilot 改寫 API 呼叫後，您需要驗證每個周邊是否正常運作。由於這是直接與真實硬體互動的裸機 MCU 程式碼，**傳統的單元測試並不實用** — BSP 呼叫直接操作您電腦上不存在的周邊暫存器。
 
@@ -349,7 +349,7 @@ Each test should be a standalone function I can call from main().
            │
            ▼
 ┌───────────────────────────────────────┐
-│  步驟 5：硬體驗證 + NuTRM 除錯       │  ← 測試周邊，詢問 NuTRM
+│  步驟 5：硬體驗證 + NuTRM 除錯       │  ← 測試周邊
 │  → 以 TRM 暫存器資訊修正問題          │
 └───────────────────────────────────────┘
 ```
